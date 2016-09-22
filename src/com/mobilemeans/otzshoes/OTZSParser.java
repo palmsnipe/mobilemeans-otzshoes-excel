@@ -129,7 +129,7 @@ public class OTZSParser {
 	                    		  header.put(cell.getColumnIndex(), ""); 
 	                	}
 	                }
-	                else if (cell.getColumnIndex() == 0 && cell.getStringCellValue().contains("TOTAL")) {
+	                else if (cell.getColumnIndex() == 0 && cell.getStringCellValue().toLowerCase().contains("total")) {
 	                	return company;
 	                }
 	                else {

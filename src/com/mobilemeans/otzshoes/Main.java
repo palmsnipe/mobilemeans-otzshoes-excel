@@ -5,7 +5,9 @@ import java.awt.dnd.DropTarget;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -68,7 +70,7 @@ public class Main implements DragObserver {
 
 	    new DropTarget(myLabel, myDragDropListener);
 	    
-	    mProgressBar = new JProgressBar();
+	    mProgressBar = new JProgressBar(0, 100);
 
 	    mFrame.getContentPane().add(BorderLayout.CENTER, myLabel);
 	    mFrame.getContentPane().add(BorderLayout.SOUTH, mProgressBar);
@@ -79,21 +81,26 @@ public class Main implements DragObserver {
 
 	@Override
 	public void folderDropped(final File folder) {
+		
 		mWorker = new SwingWorker<Void, String>() {
 			
 			@Override
-			protected Void doInBackground() throws Exception {
+			protected Void doInBackground() {
 				List<Company> list = new ArrayList<>();
 				List<String> errors = new ArrayList<String>();
 				List<Output> output = new ArrayList<>();
 				
-				int i = 1;
-				mProgressBar.setMaximum(folder.listFiles().length);
-				for (final File fileEntry : folder.listFiles()) {
+				int i = 0;
+				
+				File[] files = folder.listFiles();
+				float divisor = (float) files.length / 100.0f;
+				for (final File fileEntry : files) {
 			        if (!fileEntry.isDirectory() && !fileEntry.isHidden() && !fileEntry.getName().startsWith("~") && fileEntry.getName().endsWith(".xlsx")) {
 			        	OTZSParser parser = new OTZSParser(fileEntry);
 			        	
 			        	Company company = parser.parseFile();
+			        	
+			        	parser = null;
 			    		
 			        	if (company != null) {
 			        		list.add(company);
@@ -137,7 +144,7 @@ public class Main implements DragObserver {
 			        		errors.add(String.format("WARNING! the file \"%s\" couldn't be parsed", fileEntry.getName()));
 			        	}
 			        }
-			        setProgress(i++);
+			        setProgress((int) (++i / divisor));
 			    }
 				
 				// Sort the output
@@ -201,18 +208,34 @@ public class Main implements DragObserver {
 				cell = row.createCell(5);
 		        cell.setCellType(Cell.CELL_TYPE_STRING);
 		        cell.setCellValue("Error messages");
-		        for (String error : errors) {
+		        if (errors.size() > 0) {
+			        for (String error : errors) {
+			        	row = sheet.getRow(line++);
+						cell = row.createCell(5);
+				        cell.setCellType(Cell.CELL_TYPE_STRING);
+				        cell.setCellValue(error);
+			        }
+		        }
+		        else {
 		        	row = sheet.getRow(line++);
 					cell = row.createCell(5);
 			        cell.setCellType(Cell.CELL_TYPE_STRING);
-			        cell.setCellValue(error);
+			        cell.setCellValue(mRes.getString("noError"));
 		        }
 		        
-		        FileOutputStream os = new FileOutputStream(OUTPUT);
-	            workbook.write(os);
-	            
-	            workbook.close();
-	            os.close();
+				try {
+					FileOutputStream os = new FileOutputStream(OUTPUT);
+		            workbook.write(os);
+		            
+		            workbook.close();
+		            os.close();
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 	           
 	            // Show Error dialog
 				if (errors.size() > 0) {
@@ -228,6 +251,8 @@ public class Main implements DragObserver {
 			@Override
 			protected void done() {
 				super.done();
+				
+//				mProgressBar.setIndeterminate(false);
 				
 				JOptionPane.showMessageDialog(mFrame,
 						mRes.getString("messageFileGenerated"),
