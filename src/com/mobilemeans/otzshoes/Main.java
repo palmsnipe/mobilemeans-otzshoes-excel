@@ -5,12 +5,12 @@ import java.awt.dnd.DropTarget;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -24,6 +24,8 @@ import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.CreationHelper;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -88,12 +90,15 @@ public class Main implements DragObserver {
 			protected Void doInBackground() {
 				List<Company> list = new ArrayList<>();
 				List<String> errors = new ArrayList<String>();
+				List<String> warnings = new ArrayList<String>();
 				List<Output> output = new ArrayList<>();
 				
+				int totalShoes = 0;
+				BigDecimal totalPriceVAT = BigDecimal.ZERO;
 				int i = 0;
 				
 				File[] files = folder.listFiles();
-				float divisor = (float) files.length / 100.0f;
+				float divisor = files.length / 100.0f;
 				for (final File fileEntry : files) {
 			        if (!fileEntry.isDirectory() && !fileEntry.isHidden() && !fileEntry.getName().startsWith("~") && fileEntry.getName().endsWith(".xlsx")) {
 			        	OTZSParser parser = new OTZSParser(fileEntry);
@@ -108,9 +113,18 @@ public class Main implements DragObserver {
 			        		for (Shoe shoe : company.getShoes()) {
 			        			if (!shoe.getCode().matches("\\d+-\\d+")) {
 			        				System.out.println("## " + fileEntry.getName() + " - " + shoe.getCode());
-			        				errors.add(String.format("The code \"%s\" in \"%s\" is incorrect (not included in the results)", shoe.getCode(), fileEntry.getName()));
+			        				errors.add(String.format("%s - The code \"%s\" is incorrect (not included in the results)", fileEntry.getName(), shoe.getCode()));
 			        			}
 			        			else {
+			        				int stock = shoe.getTotalStock();
+			        				totalShoes += stock;
+			        				
+	        						Double priceExVAT = shoe.getPriceExVAT();
+	        						if (priceExVAT.compareTo(0.0) <= 0)
+	        							errors.add(String.format("%s - The shoe price excluded VAT for the code \"%s\" is %.2f euro. (the total amount will be wrong!)", fileEntry.getName(), shoe.getCode(), priceExVAT));
+	        						
+	        						HashMap<String, String> errorPrice = new HashMap<>();
+	        						totalPriceVAT = totalPriceVAT.add(new BigDecimal("" + priceExVAT).multiply(new BigDecimal(stock)));
 				        			for (Stock size : shoe.getStock()) {
 				        				boolean added = false;
 				        				for (Output item : output) {
@@ -119,6 +133,10 @@ public class Main implements DragObserver {
 				        						
 				        						if (item.getName().length() < shoe.getName().length())
 				        							item.setName(shoe.getName());
+				        						
+//				        						if (priceExVAT.compareTo(item.getPriceExVAT()) != 0) {
+//				        							errorPrice.put(shoe.getCode(), String.format("%s - The shoe price excluded VAT for the code \"%s\" is not the same in an other file.", fileEntry.getName(), shoe.getCode()));
+//				        						}
 				        						
 				        						added = true;
 				        						break;
@@ -131,10 +149,14 @@ public class Main implements DragObserver {
 				        					newOutput.setName(shoe.getName());
 				        					newOutput.setSize(size.getSize());
 				        					newOutput.setQuantity(size.getQuantity());
+				        					newOutput.setPriceExVAT(shoe.getPriceExVAT());
 				        					
 				        					output.add(newOutput);
 				        				}
 				        				
+				        			}
+				        			for (String value : errorPrice.values()) {
+				        			    warnings.add(value);
 				        			}
 			        			}
 			        		}
@@ -170,6 +192,21 @@ public class Main implements DragObserver {
 				// Create the Excel file
 				XSSFWorkbook workbook = new XSSFWorkbook();
 		        XSSFSheet sheet = workbook.createSheet("Quantities");
+				CellStyle cellStyle = workbook.createCellStyle();
+				CellStyle cellStyleCurrency = workbook.createCellStyle();
+				CreationHelper createHelper = workbook.getCreationHelper();
+				
+				int numRowOther = 6;
+
+
+				cellStyle.setAlignment(CellStyle.ALIGN_LEFT);
+				cellStyleCurrency.setAlignment(CellStyle.ALIGN_LEFT);
+				cellStyleCurrency.setDataFormat(createHelper.createDataFormat().getFormat("#,##0.00 €"));
+
+		        sheet.setColumnWidth(0, 35 * 256);
+		        sheet.setColumnWidth(1, 12 * 256);
+		        sheet.setColumnWidth(4, 15 * 256);
+		        sheet.setColumnWidth(numRowOther, 100 * 256);
 				
 		        Row row = sheet.createRow(0);
 		        Cell cell = row.createCell(0);
@@ -184,6 +221,9 @@ public class Main implements DragObserver {
 		        cell = row.createCell(3);
 		        cell.setCellType(Cell.CELL_TYPE_STRING);
 		        cell.setCellValue("QUANTITY");
+		        cell = row.createCell(4);
+		        cell.setCellType(Cell.CELL_TYPE_STRING);
+		        cell.setCellValue("PRICE EXC. VAT");
 		        
 		        int line = 1;
 				for (Output item : output) {
@@ -200,27 +240,86 @@ public class Main implements DragObserver {
 			        cell = row.createCell(3);
 			        cell.setCellType(Cell.CELL_TYPE_NUMERIC);
 			        cell.setCellValue(item.getQuantity());
+			        cell = row.createCell(4);
+			        cell.setCellType(Cell.CELL_TYPE_NUMERIC);
+					cell.setCellStyle(cellStyleCurrency);
+			        cell.setCellValue(Double.parseDouble("" + item.getPriceExVAT()));
 				}
 				
-				// Errors
+
+				cellStyle.setAlignment(CellStyle.ALIGN_LEFT);
+				// Total shoes
 				line = 1;
 				row = sheet.getRow(line++);
-				cell = row.createCell(5);
+				cell = row.createCell(numRowOther);
+		        cell.setCellType(Cell.CELL_TYPE_STRING);
+		        cell.setCellValue("Total shoes");
+				cell.setCellStyle(cellStyle);
+	        	row = sheet.getRow(line++);
+				cell = row.createCell(numRowOther);
+				cell.setCellStyle(cellStyle);
+		        cell.setCellType(Cell.CELL_TYPE_NUMERIC);
+		        cell.setCellValue(totalShoes);
+				
+				// Total price ex VAT
+				line += 1;
+				row = sheet.getRow(line++);
+				cell = row.createCell(numRowOther);
+				cell.setCellStyle(cellStyle);
+		        cell.setCellType(Cell.CELL_TYPE_STRING);
+		        cell.setCellValue("Total price exc. VAT");
+	        	row = sheet.getRow(line++);
+				cell = row.createCell(numRowOther);
+				cell.setCellType(Cell.CELL_TYPE_NUMERIC);
+				cell.setCellStyle(cellStyleCurrency);
+		        cell.setCellValue(totalPriceVAT.doubleValue());
+				
+				// Errors
+				line += 2;
+				row = sheet.getRow(line++);
+				cell = row.createCell(numRowOther);
+				cell.setCellStyle(cellStyle);
 		        cell.setCellType(Cell.CELL_TYPE_STRING);
 		        cell.setCellValue("Error messages");
 		        if (errors.size() > 0) {
 			        for (String error : errors) {
 			        	row = sheet.getRow(line++);
-						cell = row.createCell(5);
+						cell = row.createCell(numRowOther);
+						cell.setCellStyle(cellStyle);
 				        cell.setCellType(Cell.CELL_TYPE_STRING);
 				        cell.setCellValue(error);
 			        }
 		        }
 		        else {
 		        	row = sheet.getRow(line++);
-					cell = row.createCell(5);
+					cell = row.createCell(numRowOther);
+					cell.setCellStyle(cellStyle);
 			        cell.setCellType(Cell.CELL_TYPE_STRING);
 			        cell.setCellValue(mRes.getString("noError"));
+		        }
+				
+				// Warnings
+				line += 2;
+				row = sheet.getRow(line++);
+				cell = row.createCell(numRowOther);
+				cell.setCellStyle(cellStyle);
+		        cell.setCellType(Cell.CELL_TYPE_STRING);
+		        cell.setCellValue("Warning messages");
+		        if (errors.size() > 0) {
+			        for (String warning : warnings) {
+			        	row = sheet.getRow(line++);
+						cell = row.createCell(numRowOther);
+						cell.setCellStyle(cellStyle);
+				        cell.setCellType(Cell.CELL_TYPE_STRING);
+				        cell.setCellValue(warning);
+			        }
+		        }
+		        else {
+		        	row = sheet.getRow(line++);
+					cell = row.createCell(numRowOther);
+					cell.setCellStyle(cellStyle);
+			        cell.setCellType(Cell.CELL_TYPE_STRING);
+			        cell.setCellValue(mRes.getString("noWarning"));
 		        }
 		        
 				try {
@@ -229,11 +328,7 @@ public class Main implements DragObserver {
 		            
 		            workbook.close();
 		            os.close();
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} catch (Exception e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 	           
@@ -251,8 +346,6 @@ public class Main implements DragObserver {
 			@Override
 			protected void done() {
 				super.done();
-				
-//				mProgressBar.setIndeterminate(false);
 				
 				JOptionPane.showMessageDialog(mFrame,
 						mRes.getString("messageFileGenerated"),

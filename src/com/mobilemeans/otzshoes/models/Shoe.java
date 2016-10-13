@@ -7,8 +7,8 @@ public class Shoe {
 	private String name;
 	private String code;
 	private List<Stock> stock;
-	private float priceExVAT;
-	private float retailPrice;
+	private double priceExVAT = 0.0;
+	private double retailPrice = 0.0;
 	
 	public Shoe() {
 		this.stock = new ArrayList<Stock>();
@@ -35,16 +35,16 @@ public class Shoe {
 	public void addStock(Stock stock) {
 		this.stock.add(stock);
 	}
-	public float getPriceExVAT() {
+	public double getPriceExVAT() {
 		return priceExVAT;
 	}
-	public void setPriceExVAT(float priceExVAT) {
+	public void setPriceExVAT(double priceExVAT) {
 		this.priceExVAT = priceExVAT;
 	}
-	public float getRetailPrice() {
+	public double getRetailPrice() {
 		return retailPrice;
 	}
-	public void setRetailPrice(float retailPrice) {
+	public void setRetailPrice(double retailPrice) {
 		this.retailPrice = retailPrice;
 	}
 	

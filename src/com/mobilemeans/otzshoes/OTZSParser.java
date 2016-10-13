@@ -153,6 +153,13 @@ public class OTZSParser {
 	                		}
 	                		
 	                	}
+	                	else if (header.get(cell.getColumnIndex()).contains("price ex vat")) {
+	                		String str = cell.getStringCellValue();
+	                		if (str != null && str.length() > 0) {
+		                		double nb = Double.parseDouble(str);
+		                		shoe.setPriceExVAT(nb);
+	                		}
+	                	}
 	                	else if (!cellIterator.hasNext()) {
 	                		if (shoe != null && shoe.getCode() != null && shoe.getCode().trim().length() > 0) {
 	                        	shoes.add(shoe);

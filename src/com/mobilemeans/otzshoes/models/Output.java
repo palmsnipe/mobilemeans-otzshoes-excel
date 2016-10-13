@@ -5,6 +5,7 @@ public class Output {
 	private String code = "";
 	private int size = 0;
 	private int quantity = 0;
+	private double priceExVAT = 0.0;
 	
 	public String getName() {
 		return name;
@@ -29,5 +30,11 @@ public class Output {
 	}
 	public void setQuantity(int quantity) {
 		this.quantity = quantity;
+	}
+	public double getPriceExVAT() {
+		return priceExVAT;
+	}
+	public void setPriceExVAT(double priceExVAT) {
+		this.priceExVAT = priceExVAT;
 	}
 }
